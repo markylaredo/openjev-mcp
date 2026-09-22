@@ -3,6 +3,7 @@
   "version": "0.1.1",
   "private": true,
   "description": "MCP server exposing TypeSafe's Jev through the OpenJEV public API",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "openjev-mcp": "dist/index.js"

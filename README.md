@@ -396,3 +396,7 @@ docs/
 
 - OpenJEV docs: <https://openjev.sh/docs> · plain text: <https://openjev.sh/llm.txt>
 - TypeSafe, on the primitives: <https://docs.typesafe.ai/primitives>
+
+## License
+
+MIT — see [LICENSE](LICENSE).
