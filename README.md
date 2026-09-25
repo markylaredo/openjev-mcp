@@ -1,5 +1,7 @@
 # openjev-mcp
 
+[![M8ven Score](https://m8ven.ai/badge/mcp/markylaredo/openjev-mcp)](https://m8ven.ai/mcp/markylaredo/openjev-mcp)
+
 An MCP server that puts **Jev** — TypeSafe's System One model, reached through the public
 [OpenJEV](https://openjev.sh/docs) API — in front of any MCP client.
 
