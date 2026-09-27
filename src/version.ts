@@ -5,7 +5,7 @@
  * the published manifest after a bump, which is exactly when the number matters.
  */
 
-import { createRequire } from 'node:module';
+import { createRequire } from 'module';
 
 function readVersion(): string {
   try {
