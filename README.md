@@ -129,13 +129,13 @@ One entry in the profile patch layer at `~/.dsh/profiles/<profile>/cordis.patch.
         command: openjev-mcp
         env:
           OPENJEV_API_KEY: !!js process.env.OPENJEV_API_KEY
-        toolCallTimeoutMs: 120000
+        toolCallTimeoutMs: 150000
 ```
 
 Two fields are deliberate. The key is named in `env` because the harness hands MCP
 children a scrubbed environment with credential-shaped names removed, so the variable
 reaches the server only because this entry forwards it. The timeout is raised because the
-server's own worst case is ~92 s (see [`docs/production.md`](docs/production.md)), and the
+server's own worst case is ~120 s (see [`docs/production.md`](docs/production.md)), and the
 60 s default would abort the third attempt.
 
 `command: openjev-mcp` assumes the global install described above. With a local build,
@@ -345,8 +345,8 @@ The operational requirements in summary:
   a repository. Rotation requires updating the file **and restarting the client**: the
   harness reads its environment at startup, so a file change alone has no effect. Setup
   and placement: [Where the API key goes](docs/api-key.md).
-- **Client call timeout above ~92 s.** That is the server's worst case — 3 attempts × 30 s
-  plus backoff. A 60 s client timeout aborts a retry that was still in progress.
+- **Client call timeout above ~120 s.** That is the server's worst case — 3 attempts × 30 s
+  plus two Retry-After waits of up to 15 s. A 60 s client timeout aborts a retry that was still in progress.
 - **Batch rather than fan out.** Rate limits apply per key and are shared by every process
   using it. One `jev_ask` carrying five questions is one request; five parallel calls are
   five.
@@ -369,7 +369,7 @@ npm test           # build, then the full suite
 npm start          # stdio server; needs OPENJEV_API_KEY already in the environment
 ```
 
-79 tests run against the built output, with no network and no API key: a mock OpenJEV
+The full test suite runs against the built output, with no network and no API key: a mock OpenJEV
 drives the client and tool paths, an in-memory transport pair exercises the MCP protocol,
 and one test spawns `dist/index.js` and speaks raw JSON-RPC over stdio to prove stdout
 carries nothing but the protocol.

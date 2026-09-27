@@ -8,6 +8,8 @@
  * It deliberately holds no thresholds — those belong to the application.
  */
 
+import { setTimeout as delay } from 'node:timers/promises';
+
 import { OpenJevError } from './errors.js';
 import type {
   Answer,
@@ -50,19 +52,23 @@ export interface OpenJevClientOptions {
   /** Transport seam for tests. Defaults to global `fetch`. */
   fetchImpl?: FetchLike | undefined;
   /** Sleep seam for tests. Defaults to a real timer. */
-  sleepImpl?: ((ms: number) => Promise<void>) | undefined;
+  sleepImpl?: ((ms: number, signal?: AbortSignal) => Promise<void>) | undefined;
   userAgent?: string | undefined;
 }
 
 export interface CallOptions {
-  /** Aborts the call; the caller's reason is preserved as an `aborted` error. */
+  /** Aborts the call, including retry waits, with an `aborted` error. */
   signal?: AbortSignal | undefined;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => {
-    setTimeout(resolve, ms);
-  });
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return delay(ms, undefined, { signal });
+}
+
+function throwIfCancelled(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new OpenJevError({ code: 'aborted', message: 'The request was cancelled before it completed.' });
+  }
 }
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -242,10 +248,10 @@ export function parseSystemOneResponse(raw: string): SystemOneResponse {
 }
 
 /**
- * The contract is one answer per question. A missing answer is not a judgment
- * we can invent, so it is reported as an off-contract response.
+ * Check each answer against its requested primitive and criteria, so a valid
+ * answer shape cannot conceal a judgment for a different question.
  */
-function assertEveryQuestionAnswered(request: SystemOneRequest, response: SystemOneResponse): void {
+function assertAnswersMatchRequest(request: SystemOneRequest, response: SystemOneResponse): void {
   const unanswered = Object.keys(request.questions).filter(id => !Object.hasOwn(response.answers, id));
   if (unanswered.length > 0) {
     throw malformed(
@@ -255,6 +261,27 @@ function assertEveryQuestionAnswered(request: SystemOneRequest, response: System
       { answered: Object.keys(response.answers) },
     );
   }
+  for (const [id, question] of Object.entries(request.questions)) {
+    const answer = response.answers[id]!;
+    if (answer.type !== question.type) {
+      throw malformed(`OpenJEV returned a ${answer.type} answer for question "${id}"; expected ${question.type}.`);
+    }
+    if (answer.type === 'noul') continue;
+    const keys = question.type === 'choice'
+      ? Object.keys(question.criteria)
+      : question.type === 'score' ? question.criteria.map((_, index) => String(index)) : [];
+    if (Object.keys(answer.probabilities).length !== keys.length ||
+        keys.some(key => !Object.hasOwn(answer.probabilities, key))) {
+      throw malformed(`OpenJEV returned probabilities that do not match the criteria for question "${id}".`);
+    }
+    if (answer.type === 'choice' && !keys.includes(answer.choice)) {
+      throw malformed(`OpenJEV returned an unlisted choice for question "${id}".`);
+    }
+    if (answer.type === 'score' && (answer.score < 0 || answer.score > keys.length - 1)) {
+      throw malformed(`OpenJEV returned a score outside the requested scale for question "${id}".`);
+    }
+  }
+
 }
 
 function httpError(status: number, body: unknown, retryAfterMs: number | undefined): OpenJevError {
@@ -306,7 +333,7 @@ export class OpenJevClient {
   private readonly maxRetryAfterMs: number;
   private readonly defaultModel: string | undefined;
   private readonly fetchImpl: FetchLike;
-  private readonly sleepImpl: (ms: number) => Promise<void>;
+  private readonly sleepImpl: (ms: number, signal?: AbortSignal) => Promise<void>;
   private readonly userAgent: string;
 
   constructor(options: OpenJevClientOptions) {
@@ -352,8 +379,9 @@ export class OpenJevClient {
     let attempt = 0;
     for (;;) {
       try {
+        throwIfCancelled(options.signal);
         const response = await this.attempt(payload, options.signal);
-        assertEveryQuestionAnswered(request, response);
+        assertAnswersMatchRequest(request, response);
         return response;
       } catch (error) {
         const failure = error instanceof OpenJevError ? error : undefined;
@@ -361,7 +389,13 @@ export class OpenJevClient {
         if (!failure.retryable || attempt >= this.maxRetries) throw failure;
         const delay = failure.retryAfterMs ?? this.backoffMs(attempt);
         if (delay > this.maxRetryAfterMs) throw failure;
-        await this.sleepImpl(delay);
+        throwIfCancelled(options.signal);
+        try {
+          await this.sleepImpl(delay, options.signal);
+        } catch (error) {
+          throwIfCancelled(options.signal);
+          throw error;
+        }
         attempt += 1;
       }
     }

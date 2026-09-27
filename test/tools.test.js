@@ -75,6 +75,7 @@ describe('tools/list', () => {
 
 describe('jev_choice', () => {
   it('sends one choice question and returns the selection with its distribution', async () => {
+    const choiceAnswer = { type: 'choice', choice: 'billing', probabilities: { billing: 0.9, sales: 0.05, other: 0.05 }, confidence: 0.8 };
     mock.respondWith({ status: 200, body: answerBody({ choice: choiceAnswer }) });
 
     const result = await mcp.client.callTool({
@@ -180,7 +181,7 @@ describe('jev_ask', () => {
     mock.respondWith({
       status: 200,
       body: answerBody({
-        team: choiceAnswer,
+        team: { ...choiceAnswer, probabilities: { billing: 0.9, other: 0.1 } },
         severity: { type: 'score', score: 1, legend: { 0: 'None', 1: 'Mild' }, probabilities: { 0: 0.5, 1: 0.5 }, confidence: 0.2 },
         urgent: { type: 'noul', noul: 0.92 },
       }),

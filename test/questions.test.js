@@ -252,3 +252,15 @@ describe('formatIssues', () => {
     assert.match(rendered, /\n {2}- questions\.q\.instructions: /);
   });
 });
+
+it('preserves special property names in choice shorthand and serialized requests', () => {
+  const { questions, review } = prepareRequest('state', {
+    q: { type: 'choice', instructions: 'Pick', criteria: ['__proto__', 'constructor', 'other'] },
+  });
+  assert.deepEqual(review.issues, []);
+  assert.deepEqual(Object.keys(questions.q.criteria), ['__proto__', 'constructor', 'other']);
+  assert.equal(Object.getPrototypeOf(questions.q.criteria), Object.prototype);
+  const wire = JSON.parse(JSON.stringify(questions));
+  assert.equal(Object.hasOwn(wire.q.criteria, '__proto__'), true);
+  assert.equal(wire.q.criteria.__proto__, null);
+});

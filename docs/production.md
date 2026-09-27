@@ -67,7 +67,7 @@ Add one entry to the profile patch layer at `~/.dsh/profiles/<profile>/cordis.pa
         command: openjev-mcp
         env:
           OPENJEV_API_KEY: !!js process.env.OPENJEV_API_KEY
-        toolCallTimeoutMs: 120000
+        toolCallTimeoutMs: 150000
 ```
 
 Two requirements are easy to miss:
@@ -138,9 +138,11 @@ retry that is still in progress and report a timeout for a call that would have 
 | Per-attempt timeout | `OPENJEV_TIMEOUT_MS=30000` | 30 s |
 | Attempts | `1 + OPENJEV_MAX_RETRIES=2` | 3 |
 | Backoff between attempts | 500 ms base, doubling, 8 s cap, ±10 % jitter | 1.35–1.65 s |
-| **End-to-end** | | **~92 s** |
+| Retry-After between attempts | Up to 15 s each | 30 s total |
+| **End-to-end including Retry-After** | | **~120 s plus overhead** |
 
-Configure the client above that figure — `toolCallTimeoutMs: 120000` in DeepSeek Harness.
+Exponential backoff alone gives about 92 s; honored `Retry-After` waits can bring
+the total to about 120 s, plus processing overhead. Configure the client above that figure — `toolCallTimeoutMs: 150000` in DeepSeek Harness.
 
 Retries apply to `429`, `5xx`, timeouts, and network failures only. Authentication (`401`)
 and request validation (`422`) failures are returned immediately, since repetition cannot
@@ -256,7 +258,7 @@ Post-upgrade verification, in order:
 
 1. `openjev-mcp --help` — the binary on `PATH` is the new build.
 2. `openjev-mcp --check` — credentials and endpoint still function.
-3. `npm test` — 79 tests, requiring neither network access nor a key.
+3. `npm test` — the full test suite, requiring neither network access nor a key.
 4. One real tool call through the client — the only check that exercises the full chain.
 
 ## 10. Incident runbook
@@ -268,19 +270,19 @@ Post-upgrade verification, in order:
 | Tool error `invalid_request` (HTTP 422) | The service rejected the request body | Read the attached detail. Repetition without a change fails identically |
 | Tool error `rate_limited` (HTTP 429) | Key limit reached | Batch calls, reduce parallelism, honor `retry_after_ms` |
 | Tool error `unavailable` (HTTP 5xx) | Service unavailable or throttling | Retried automatically; if sustained, check <https://openjev.sh> |
-| Tool error `timeout` | Attempt exceeded `OPENJEV_TIMEOUT_MS` | Raise it, and raise the client timeout above ~92 s |
+| Tool error `timeout` | Attempt exceeded `OPENJEV_TIMEOUT_MS` | Raise it, and raise the client timeout above ~120 s |
 | Tool error `network` | DNS, egress, or an incorrect `OPENJEV_BASE_URL` | Verify network access and the configured endpoint |
 | Tool error `malformed_response` | Response off-contract | Treat the judgment as unavailable. Do not infer a value; report the occurrence |
 | "Request rejected locally" | Local rules rejected the request before transmission | Correct the reported path. No call was spent |
 | Client lists no `mcp__openjev__*` tools | Server failed to start, or the client was not restarted | Inspect the client's MCP log; `openjev-mcp --check` separates credential faults from client faults |
-| Every call fails at the client's timeout value | Client timeout below the server's retry budget | Raise `toolCallTimeoutMs` above ~92 s |
+| Every call fails at the client's timeout value | Client timeout below the server's retry budget | Raise `toolCallTimeoutMs` above ~120 s |
 | Failure after editing `~/.dsh/.env` | The harness caches its environment at startup | Restart the harness |
 
 ## 11. Pre-deployment checklist
 
 - [ ] `OPENJEV_API_KEY` present, mode `600`, absent from all repositories
 - [ ] `openjev-mcp --check` exits `0` on the target machine
-- [ ] Client per-call timeout configured above ~92 s
+- [ ] Client per-call timeout configured above ~120 s
 - [ ] Client restarted since the last configuration or credential change
 - [ ] A real tool call verified through the client, not only `--check`
 - [ ] `state` payloads reviewed for personal data; redaction or a detection gate in place

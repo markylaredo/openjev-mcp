@@ -197,11 +197,11 @@ function toQuestion(path: string, raw: RawQuestion, issues: QuestionIssue[]): Qu
   if (raw.type === 'choice') {
     const criteria = raw.criteria;
     if (Array.isArray(criteria)) {
-      const options: Record<string, CriterionDescription> = {};
+      const options: Array<[string, CriterionDescription]> = [];
       let unusable = false;
       criteria.forEach((name, index) => {
         if (isNonEmptyText(name)) {
-          options[name] = null;
+          options.push([name, null]);
         } else {
           unusable = true;
           issues.push({
@@ -213,7 +213,7 @@ function toQuestion(path: string, raw: RawQuestion, issues: QuestionIssue[]): Qu
       // A list that lost entries would also fail the option-count check, and
       // reporting that as a second problem would only bury the real one.
       if (unusable) return undefined;
-      const question: ChoiceQuestion = { type: 'choice', instructions, criteria: options };
+      const question: ChoiceQuestion = { type: 'choice', instructions, criteria: Object.fromEntries(options) };
       return question;
     }
     if (!isPlainObject(criteria)) {

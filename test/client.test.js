@@ -298,3 +298,61 @@ describe('parseRetryAfter', () => {
     assert.equal(parseRetryAfter(null), undefined);
   });
 });
+
+describe('request-aware response validation', () => {
+  const choice = { type: 'choice', instructions: 'Pick one', criteria: { a: null, b: null } };
+  const score = { type: 'score', instructions: 'Rate it', criteria: ['low', 'high'] };
+  for (const [name, question, answer] of [
+    ['wrong answer type', choice, { type: 'noul', noul: 0.5 }],
+    ['unlisted choice', choice, { type: 'choice', choice: 'c', probabilities: { a: 0.5, b: 0.5 }, confidence: 0 }],
+    ['empty probabilities', choice, { type: 'choice', choice: 'a', probabilities: {}, confidence: 1 }],
+    ['wrong probability keys', choice, { type: 'choice', choice: 'a', probabilities: { a: 0.5, c: 0.5 }, confidence: 0 }],
+    ['out-of-range score', score, { type: 'score', score: 2, probabilities: { 0: 0, 1: 1 }, confidence: 1 }],
+    ['wrong score levels', score, { type: 'score', score: 1, probabilities: { 0: 0, 2: 1 }, confidence: 1 }],
+  ]) {
+    it(`rejects ${name} without retrying`, async () => {
+      mock.respondWith({ status: 200, body: answerBody({ q: answer }) });
+      await assert.rejects(makeClient({ maxRetries: 2 }).systemOne({ state: 'x', questions: { q: question } }),
+        error => error.code === 'malformed_response');
+      assert.equal(mock.requests.length, 1);
+    });
+  }
+
+  it('accepts a choice named __proto__', async () => {
+    mock.respondWith({ status: 200, body: answerBody({ q: {
+      type: 'choice', choice: '__proto__', probabilities: { ['__proto__']: 1, other: 0 }, confidence: 1,
+    } }) });
+    const result = await makeClient().systemOne({ state: 'x', questions: { q: {
+      ...choice, criteria: { ['__proto__']: null, other: null },
+    } } });
+    assert.equal(result.answers.q.choice, '__proto__');
+  });
+});
+
+describe('retry cancellation', () => {
+  it('interrupts the real retry timer and sends no further request', { timeout: 2000 }, async () => {
+    const { setTimeout: delay } = await import('node:timers/promises');
+    const controller = new AbortController();
+    let started;
+    const sleeping = new Promise(resolve => { started = resolve; });
+    mock.respondWith({ status: 429, headers: { 'retry-after': '15' }, body: {} });
+    const client = makeClient({ maxRetries: 2, sleepImpl: (ms, signal) => {
+      started();
+      return delay(ms, undefined, { signal });
+    } });
+    const pending = client.systemOne({ state: 'x', questions: oneQuestion }, { signal: controller.signal });
+    const rejected = assert.rejects(pending, error => error.code === 'aborted' && !error.retryable);
+    await sleeping;
+    controller.abort();
+    await rejected;
+    assert.equal(mock.requests.length, 1);
+  });
+
+  it('does not send a request when already cancelled', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(makeClient().systemOne({ state: 'x', questions: oneQuestion }, { signal: controller.signal }),
+      error => error.code === 'aborted');
+    assert.equal(mock.requests.length, 0);
+  });
+});
