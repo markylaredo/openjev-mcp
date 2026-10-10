@@ -1,6 +1,6 @@
 {
   "name": "openjev-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP server for typed AI judgments: classify, route, score, and flag with calibrated probabilities instead of prose. Powered by Jev via the OpenJEV API.",
   "mcpName": "io.github.markylaredo/openjev-mcp",
   "license": "MIT",
