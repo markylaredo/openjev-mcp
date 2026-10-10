@@ -1,7 +1,9 @@
 name: Release
 
 # Publish by creating a GitHub release whose tag is v<package.json version>,
-# e.g. v0.2.0. Requires an NPM_TOKEN repository secret (an npm automation token).
+# e.g. v0.2.0. Authenticates to npm through trusted publishing (OIDC): configure
+# this repo and workflow as a trusted publisher on npmjs.com, and no token is
+# needed. An NPM_TOKEN secret is used as a fallback when one is set.
 on:
   release:
     types: [published]
@@ -20,10 +22,12 @@ jobs:
           node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
+      - name: npm 11.5+ for trusted publishing
+        run: npm install -g npm@latest
       - run: npm ci
       - name: Tag matches package.json and server.json
         run: node scripts/check-versions.mjs "${GITHUB_REF_NAME#v}"
-      - run: npm publish
+      - run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish to the MCP Registry
