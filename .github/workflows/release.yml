@@ -30,7 +30,24 @@ jobs:
       # Build before publishing: npm validates `bin` (dist/index.js) before
       # prepublishOnly runs, and drops a bin entry whose file does not exist.
       - run: npm run build
-      - run: npm publish --provenance
+      # Skipped when this version is already on npm, so a release whose registry
+      # step failed can be run again without npm rejecting a duplicate publish.
+      - name: npm publish
+        run: |
+          if npm view "openjev-mcp@${GITHUB_REF_NAME#v}" version >/dev/null 2>&1; then
+            echo "openjev-mcp@${GITHUB_REF_NAME#v} is already on npm; skipping."
+          else
+            npm publish --provenance
+          fi
+      # The MCP Registry verifies the npm version exists, and a fresh publish can
+      # take a minute or more to become visible.
+      - name: Wait for the version on npm
+        run: |
+          for i in $(seq 1 30); do
+            npm view "openjev-mcp@${GITHUB_REF_NAME#v}" version >/dev/null 2>&1 && exit 0
+            echo "not visible yet ($i/30)"; sleep 10
+          done
+          echo "openjev-mcp@${GITHUB_REF_NAME#v} did not appear on npm within 5 minutes"; exit 1
       - name: Publish to the MCP Registry
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
