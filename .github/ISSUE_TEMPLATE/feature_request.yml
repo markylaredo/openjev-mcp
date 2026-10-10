@@ -1,0 +1,15 @@
+name: Feature request
+description: Suggest a tool, prompt, or client integration
+labels: [enhancement]
+body:
+  - type: textarea
+    id: usecase
+    attributes:
+      label: What are you trying to do?
+      description: The use case matters more than the proposed solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help?
