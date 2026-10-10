@@ -48,7 +48,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.js",
     "start": "node dist/index.js",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "npm test",
+    "demo": "npm run build && node demo/run.mjs",
+    "demo:gif": "npm run build && vhs demo/demo.tape"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
