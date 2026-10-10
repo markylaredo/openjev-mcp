@@ -231,28 +231,29 @@ reduction. `aborted` indicates a user cancelled a request and requires no action
 
 ## 9. Upgrade and rollback
 
-A global install is a **copy** of the package, not a link to the source directory.
-Modifying the source does not affect the running server until the package is rebuilt and
-reinstalled.
-
-Upgrade:
+Pin a version in production rather than running `npx -y openjev-mcp`, which resolves
+the latest release at every client start. Install a specific version globally:
 
 ```bash
-cd /home/mark/projects/openjev-mcp
-npm ci && npm test
-npm pack --cache ./.npm-cache
-npm install -g ./openjev-mcp-*.tgz
+npm install -g openjev-mcp@0.2.0
 ```
+
+or pin it in the client configuration with `"args": ["-y", "openjev-mcp@0.2.0"]`.
+Read `CHANGELOG.md` before moving between versions.
 
 The client must then be restarted so that it spawns the new process; an MCP client keeps
 the server it started. Clients that hot-reload their MCP configuration, including
 DeepSeek Harness, pick the change up from the configuration or the restart.
 
-Retain the previous tarball. Rollback is a reinstall:
+Rollback is a reinstall of the previous version:
 
 ```bash
-npm install -g ./openjev-mcp-<previous-version>.tgz
+npm install -g openjev-mcp@<previous-version>
 ```
+
+A global install is a **copy** of the package. When running a build from source instead,
+modifying the source has no effect until it is rebuilt (`npm ci && npm test`), and with
+a packed tarball, until it is repacked and reinstalled.
 
 Post-upgrade verification, in order:
 

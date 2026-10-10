@@ -1,0 +1,35 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client and version
+      placeholder: Claude Desktop 1.2, Cursor 2.0, Claude Code, DeepSeek Harness...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: openjev-mcp version and Node version
+      placeholder: openjev-mcp 0.1.1, Node 22.11
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: Output of `openjev-mcp --check`
+      description: Redact your API key. The check never prints it.
+      render: text
+  - type: textarea
+    id: error
+    attributes:
+      label: Tool error or stderr output
+      render: text

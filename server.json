@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.markylaredo/openjev-mcp",
+  "title": "OpenJEV",
+  "description": "Typed AI judgments for agents: choice, score, and yes/no probabilities instead of prose.",
+  "repository": {
+    "url": "https://github.com/markylaredo/openjev-mcp",
+    "source": "github"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "openjev-mcp",
+      "version": "0.1.1",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "OPENJEV_API_KEY",
+          "description": "OpenJEV API key from https://openjev.sh/dashboard",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "OPENJEV_MODEL",
+          "description": "Model alias used when a call does not name one (default: openjev)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "OPENJEV_TIMEOUT_MS",
+          "description": "Per-attempt timeout in milliseconds, 1000-600000 (default: 30000)",
+          "isRequired": false,
+          "format": "number"
+        },
+        {
+          "name": "OPENJEV_MAX_RETRIES",
+          "description": "Retries after the first attempt, 0-10 (default: 2)",
+          "isRequired": false,
+          "format": "number"
+        }
+      ]
+    }
+  ]
+}

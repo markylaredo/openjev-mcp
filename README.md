@@ -1,99 +1,84 @@
 # openjev-mcp
 
+**Give your agent decisions, not paragraphs.** An MCP server that turns "classify this",
+"how severe is this", and "is this urgent?" into typed answers with calibrated
+probabilities that your code can branch on.
 
+[![npm](https://img.shields.io/npm/v/openjev-mcp?color=cb3837&logo=npm)](https://www.npmjs.com/package/openjev-mcp)
+[![CI](https://github.com/markylaredo/openjev-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/markylaredo/openjev-mcp/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![M8ven Score](https://m8ven.ai/badge/mcp/markylaredo/openjev-mcp)](https://m8ven.ai/mcp/markylaredo/openjev-mcp)
 [![M8ven Verified](https://m8ven.ai/badge/mcp/markylaredo-openjev-mcp-1555cu?variant=verified)](https://m8ven.ai/mcp/markylaredo-openjev-mcp-1555cu?s=readme)
 
-An MCP server that puts **Jev** — TypeSafe's System One model, reached through the public
-[OpenJEV](https://openjev.sh/docs) API — in front of any MCP client.
+[![Install in Cursor](https://img.shields.io/badge/Cursor-Install_MCP-000000?logo=cursor)](https://cursor.com/en/install-mcp?name=openjev&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9wZW5qZXYtbWNwIl0sImVudiI6eyJPUEVOSkVWX0FQSV9LRVkiOiIifX0=)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP-0098FF?logo=visualstudiocode)](https://insiders.vscode.dev/redirect/mcp/install?name=openjev&inputs=%5B%7B%22type%22%3A%22promptString%22%2C%22id%22%3A%22openjev_api_key%22%2C%22description%22%3A%22OpenJEV%20API%20key%20(https%3A%2F%2Fopenjev.sh%2Fdashboard)%22%2C%22password%22%3Atrue%7D%5D&config=%7B%22name%22%3A%22openjev%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22openjev-mcp%22%5D%2C%22env%22%3A%7B%22OPENJEV_API_KEY%22%3A%22%24%7Binput%3Aopenjev_api_key%7D%22%7D%7D)
 
-Send one context and one or more independent questions; get **typed judgments and
-probabilities** back, not prose. Four tools cover the API: `jev_ask` mirrors it exactly,
-and `jev_choice`, `jev_score`, and `jev_noul` are the single-judgment shortcuts.
+```text
+"My card was charged twice. Please help ASAP."
 
-> **Built for DeepSeek Harness; usable from any MCP client.** This server is developed and
-> verified against [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness),
-> which is the reference deployment. It speaks standard MCP over stdio, so it runs
-> unchanged in Claude Desktop, Claude Code, Cursor, or any other MCP-capable client —
-> only the place the configuration is written differs.
-
-```
-state + questions  ──►  POST https://api.openjev.sh/v1/systemone  ──►  { answers, usage }
+  jev_ask ──►  team:   billing   (p=0.94, confidence 0.85)
+               urgent: 0.92
 ```
 
-## Why this is a server and not a direct API call
+It's powered by **Jev**, TypeSafe's System One model, through the public
+[OpenJEV](https://openjev.sh/docs) API. You send one context and any number of
+independent questions in one call, and the server checks the request locally, retries
+transient failures, and validates every answer before your agent sees it.
 
-`OPENJEV_API_KEY` belongs in a server environment. An MCP client runs on someone's
-machine, so the key lives here, in this process's environment, and never reaches the
-model, the client, or a tool argument. The server also keeps the request rules and the
-retry policy in one place instead of in every prompt.
+## What people use it for
 
-## Requirements
+| Use case | Tool | Example question |
+| --- | --- | --- |
+| Support triage | `jev_ask` | Which team owns this ticket, and is it urgent? |
+| Content moderation | `jev_score` | How harmful is this message: none, mild, serious? |
+| Prompt-injection screening | `jev_noul` | Is this input trying to override instructions? |
+| Agent routing | `jev_choice` | Which sub-agent or workflow should handle this request? |
+| PR / change risk | `jev_score` | How risky is this diff to deploy on a Friday? |
+| Lead qualification | `jev_ask` | Company size bucket? Buying intent? Budget mentioned? |
+| LLM-as-judge evals | `jev_score` | Does this answer fully address the question? |
+| Free text to a known value | `jev_choice` | Which of our 200 product SKUs is this customer describing? |
 
-- Node.js 20 or newer
-- An OpenJEV API key: <https://openjev.sh/dashboard>
+The rule of thumb: if ordinary code can't express the decision but your code needs to
+act on the result, it's a Jev question.
 
-Where that key goes depends on what launches the server, and it is the step that most
-often goes wrong: see **[Where the API key goes](docs/api-key.md)**.
+## Quick start
 
-## Install
+You need Node.js 20+ and an API key from <https://openjev.sh/dashboard>.
+
+**Claude Code**
 
 ```bash
-npm install
-npm run build
+claude mcp add openjev --env OPENJEV_API_KEY=your-key -- npx -y openjev-mcp
 ```
 
-The entry point is `dist/index.js`, a stdio server.
+**Cursor, VS Code:** use the install buttons above, then paste your key.
 
-### Install once, use from any client
-
-To launch it by name instead of by absolute path, install the package globally:
-
-```bash
-npm pack --cache ./.npm-cache
-npm install -g ./openjev-mcp-*.tgz
-```
-
-That puts `openjev-mcp` on your PATH — the same command works in every MCP client on
-this machine:
+**Claude Desktop, Windsurf, Cline, and any other client** that uses the `mcpServers`
+shape:
 
 ```json
 {
   "mcpServers": {
     "openjev": {
-      "command": "openjev-mcp",
+      "command": "npx",
+      "args": ["-y", "openjev-mcp"],
       "env": { "OPENJEV_API_KEY": "your-key-from-openjev.sh" }
     }
   }
 }
 ```
 
-The API key travels in the client's `env` block, which is the one mechanism every MCP
-client has. Note that passing `--env-file=...` through `args` does **not** work here:
-Node validates the flag when it appears after the script name but does not load it, so
-the server would start without a key. If you want the key in a file rather than in each
-client's config, use `command: node` with `args: ["--env-file=/path/to/.env",
-"<npm root -g>/openjev-mcp/dist/index.js"]`, where `npm root -g` prints the global
-package directory.
+Then ask your agent something like *"Use jev_ask to route this ticket and tell me if
+it's urgent: …"*.
 
-A global install is a copy, not a link to this directory. After changing the source,
-rebuild and reinstall:
+If calls fail with a missing key, the key is in the wrong place. Each client reads it
+from a different spot, and some spots silently do nothing:
+see **[Where the API key goes](docs/api-key.md)**.
+
+### Verify the key
 
 ```bash
-npm run build && npm pack --cache ./.npm-cache && npm install -g ./openjev-mcp-*.tgz
-```
-
-For a live development loop, `npm link` points the global command at this directory
-instead, so a rebuild is enough. The packed `.tgz` is also self-contained: copy it to
-another machine and `npm install -g` it there.
-
-### Verify the install
-
-Running the server by hand proves nothing — with a working key it prints one line to
-stderr and then waits for a client that never comes. Use the self-check instead:
-
-```bash
-OPENJEV_API_KEY=your-key openjev-mcp --check
+OPENJEV_API_KEY=your-key npx -y openjev-mcp --check
 ```
 
 ```
@@ -104,22 +89,15 @@ openjev-mcp check: POST https://api.openjev.sh/v1/systemone
   OK: the API key works and a judgment came back.
 ```
 
-It spends one small judgment and exits `0`, proving the key, the endpoint, the response
-contract, and the round trip in one command. A rejected key exits `1` with the reason;
-a missing key exits `2`. `openjev-mcp --help` lists both modes.
-
-## Configure your client
-
-Any stdio MCP client takes a command, its arguments, and the server's environment. This
-server is built for **DeepSeek Harness** and verified against it; the second form below
-works in every other MCP client.
-
-For the key itself — every location it can go, and the ones that silently do nothing —
-see [Where the API key goes](docs/api-key.md).
+It spends one small judgment and exits `0`. A rejected key exits `1` with the reason;
+a missing key exits `2`. Running the server by hand without `--check` proves nothing:
+it waits silently for a client on stdin.
 
 ### DeepSeek Harness
 
-One entry in the profile patch layer at `~/.dsh/profiles/<profile>/cordis.patch.yml`:
+This server is developed and verified against
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). Add one entry to
+the profile patch layer at `~/.dsh/profiles/<profile>/cordis.patch.yml`:
 
 ```yaml
 - insert:
@@ -128,43 +106,40 @@ One entry in the profile patch layer at `~/.dsh/profiles/<profile>/cordis.patch.
       config:
         serverName: openjev
         transport: stdio
-        command: openjev-mcp
+        command: npx
+        args: ['-y', 'openjev-mcp']
         env:
           OPENJEV_API_KEY: !!js process.env.OPENJEV_API_KEY
         toolCallTimeoutMs: 150000
 ```
 
 Two fields are deliberate. The key is named in `env` because the harness hands MCP
-children a scrubbed environment with credential-shaped names removed, so the variable
-reaches the server only because this entry forwards it. The timeout is raised because the
-server's own worst case is ~120 s (see [`docs/production.md`](docs/production.md)), and the
-60 s default would abort the third attempt.
+children a scrubbed environment with credential-shaped names removed. The timeout is
+raised because the server's own worst case is ~120 s (see
+[`docs/production.md`](docs/production.md)), and the 60 s default would abort the third
+attempt.
 
-`command: openjev-mcp` assumes the global install described above. With a local build,
-use `command: node` and `args: ["/path/to/openjev-mcp/dist/index.js"]`.
+### Other ways to install
 
-### Any other MCP client
+- **Global install**, for a pinned version and a faster start than `npx`:
+  `npm install -g openjev-mcp`, then use `"command": "openjev-mcp"` with no `args`.
+- **From a checkout:** `npm ci && npm run build`, then `"command": "node"` and
+  `"args": ["/absolute/path/to/openjev-mcp/dist/index.js"]`.
 
-The `mcpServers` shape used by Claude Desktop, Claude Code, and Cursor:
-
-```json
-{
-  "mcpServers": {
-    "openjev": {
-      "command": "node",
-      "args": ["/absolute/path/to/openjev-mcp/dist/index.js"],
-      "env": {
-        "OPENJEV_API_KEY": "your-key-from-openjev.sh"
-      }
-    }
-  }
-}
-```
-
-`.env.sample` lists every variable with its default for copying into the `env` block.
+Passing `--env-file=...` through `args` does **not** work with `openjev-mcp` or `npx`:
+Node validates the flag when it appears after the script name but does not load it, so
+the server would start without a key. To keep the key in a file, use `command: node`
+with `args: ["--env-file=/path/to/.env", "/path/to/dist/index.js"]`.
 
 The server **exits immediately** if the key is missing or a setting cannot be parsed,
 writing the reason to stderr (exit code `2`). stdout carries JSON-RPC and nothing else.
+
+## Why this is a server and not a direct API call
+
+`OPENJEV_API_KEY` belongs in a server environment. An MCP client runs on someone's
+machine, so the key lives here, in this process's environment, and never reaches the
+model, the client, or a tool argument. The server also keeps the request rules and the
+retry policy in one place instead of in every prompt.
 
 ## Environment variables
 
@@ -394,7 +369,12 @@ test/
 docs/
   api-key.md    where the API key goes, per client, and what silently fails
   production.md deployment, credentials, latency budget, runbook, known limits
+scripts/
+  check-versions.mjs  package.json, server.json, and release tag must agree
+server.json     MCP Registry manifest
 ```
+
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Links
 
