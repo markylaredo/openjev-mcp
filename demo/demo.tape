@@ -17,5 +17,5 @@ Show
 Type "node demo/run.mjs"
 Sleep 500ms
 Enter
-Wait+Screen /tokens/
+Wait+Screen /tokens|failed/
 Sleep 5s
