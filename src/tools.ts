@@ -244,7 +244,12 @@ async function askOne(
 /* Registration                                                               */
 /* -------------------------------------------------------------------------- */
 
-const READ_ONLY = { readOnlyHint: true, openWorldHint: true } as const;
+/**
+ * Every tool asks an external service for a judgment and changes nothing, so the
+ * hints are the same for all four. Each one is explicit: directories such as
+ * OpenAI's reject a tool that leaves any hint unset.
+ */
+const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true } as const;
 
 export function registerTools(server: McpServer, deps: ToolDependencies): void {
   const { client } = deps;

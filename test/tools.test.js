@@ -46,7 +46,17 @@ describe('tools/list', () => {
       assert.ok(tool.description.length > 150, `${tool.name} needs a real description`);
       assert.ok(tool.inputSchema, `${tool.name} needs an input schema`);
       assert.ok(tool.outputSchema, `${tool.name} needs an output schema`);
-      assert.equal(tool.annotations?.readOnlyHint, true);
+    }
+  });
+
+  it('declares all four behavior hints as explicit booleans', async () => {
+    const { tools } = await mcp.client.listTools();
+    for (const tool of tools) {
+      assert.deepEqual(
+        tool.annotations,
+        { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+        `${tool.name} must declare every hint`,
+      );
     }
   });
 
