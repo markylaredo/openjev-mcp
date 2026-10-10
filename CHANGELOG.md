@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 - Release workflow authenticates to npm with trusted publishing (OIDC) and adds
   provenance from CI only, so a manual `npm publish` from a laptop no longer fails.
+- Release workflow builds before publishing, so npm never sees a missing `bin` file.
 
 ## [0.1.1]
 
