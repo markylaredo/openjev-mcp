@@ -1,6 +1,6 @@
 {
   "name": "openjev-mcp",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "MCP server for typed AI judgments: classify, route, score, and flag with calibrated probabilities instead of prose. Powered by Jev via the OpenJEV API.",
   "mcpName": "io.github.markylaredo/openjev-mcp",
   "license": "MIT",
@@ -49,6 +49,7 @@
     "test": "npm run build && node --test test/*.test.js",
     "start": "node dist/index.js",
     "prepublishOnly": "npm test",
+    "release": "node scripts/release.mjs",
     "demo": "npm run build && node demo/run.mjs",
     "demo:gif": "npm run build && vhs demo/demo.tape"
   },

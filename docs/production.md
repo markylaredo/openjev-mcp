@@ -7,7 +7,7 @@ response.
 | | |
 | --- | --- |
 | **Audience** | Operators who deploy, configure, or support `openjev-mcp` |
-| **Applies to** | `openjev-mcp` 0.1.1 |
+| **Applies to** | `openjev-mcp` 0.2.0 |
 | **Not covered** | Server internals and development practice — see [`../README.md`](../README.md) |
 
 All figures below are shipped defaults or measured results. Capabilities the server does

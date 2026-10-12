@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0]
+
 ### Added
 - `jev_batch`: the same questions put to up to 100 items in one tool call, one request
   per item. Answers and errors are keyed by the caller's item ids, and one failed item
@@ -25,6 +27,10 @@ All notable changes to this project are documented here. The format follows
 - The `jev_ask` and `state` descriptions say that a state is judged as one whole and
   point a list of records to `jev_batch`. A recorded agent had packed a whole ticket
   queue into one state and got one blended answer.
+- Releases publish themselves. `npm run release -- <version>` sets the version in every
+  manifest and turns the Unreleased entries into its notes; merging that to `main`
+  publishes it to npm and the MCP Registry and creates the tag and GitHub release.
+  The version check now covers `package-lock.json` too.
 
 ## [0.1.2]
 
