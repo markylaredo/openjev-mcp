@@ -37,8 +37,13 @@ enough between runs.
 
 ## Releasing (maintainers)
 
-1. Bump `version` in `package.json` **and** both versions in `server.json`
-   (`node scripts/check-versions.mjs` verifies they agree).
-2. Move the `Unreleased` changelog entries under the new version.
-3. Create a GitHub release tagged `v<version>`. The release workflow publishes to npm
-   and the MCP Registry.
+1. Run `npm run release -- <version>`, or `patch`, `minor`, or `major`. It sets the
+   version in `package.json`, `package-lock.json`, and `server.json`, moves the
+   `Unreleased` changelog entries under it, and prints the commit command.
+2. Commit, push, and open a pull request. CI checks that every version agrees.
+3. Merge it. The release workflow sees a version on `main` that is not out yet,
+   publishes it to npm and the MCP Registry, then creates the `v<version>` tag and the
+   GitHub release from its changelog section. There is no release to create by hand.
+
+If a release fails part way, re-run the workflow, or start it from the Actions tab: it
+skips whatever already succeeded.

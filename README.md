@@ -490,7 +490,8 @@ docs/
   api-key.md    where the API key goes, per client, and what silently fails
   production.md deployment, credentials, latency budget, runbook, known limits
 scripts/
-  check-versions.mjs  package.json, server.json, and release tag must agree
+  release.mjs         prepares a release; merging it to main publishes it
+  check-versions.mjs  package.json, package-lock.json, server.json, and release must agree
 server.json     MCP Registry manifest
 ```
 
