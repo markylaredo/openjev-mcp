@@ -130,6 +130,30 @@ describe('transient failures', () => {
     assert.equal(mock.requests.length, 2, 'the 429 should be retried once');
   });
 
+  it('tells the caller about each retry before waiting for it', async () => {
+    mock.respondWith(
+      { status: 429, headers: { 'retry-after': '2' }, body: { error: 'slow down' } },
+      { status: 200, body: answerBody({ verdict: { type: 'noul', noul: 0.8 } }) },
+    );
+    const retries = [];
+
+    await makeClient({ maxRetries: 1 }).systemOne(
+      { state: 'x', questions: oneQuestion },
+      { onRetry: (failure, delayMs) => retries.push([failure.code, delayMs]) },
+    );
+
+    assert.deepEqual(retries, [['rate_limited', 2_000]]);
+  });
+
+  it('states the longest a single call can take', () => {
+    assert.equal(new OpenJevClient({ apiKey: 'k' }).callBudgetMs, 120_000, '3 attempts x 30 s plus two 15 s waits');
+    assert.equal(
+      new OpenJevClient({ apiKey: 'k', timeoutMs: 5_000, maxRetries: 1, maxRetryAfterMs: 1_000 }).callBudgetMs,
+      11_000,
+    );
+    assert.equal(new OpenJevClient({ apiKey: 'k', maxRetries: 0 }).callBudgetMs, 30_000);
+  });
+
   it('gives up on a Retry-After longer than the wait we are willing to take', async () => {
     mock.respondWith({ status: 429, headers: { 'retry-after': '600' }, body: { error: 'slow down' } });
     const client = makeClient({ maxRetries: 3, maxRetryAfterMs: 1000 });

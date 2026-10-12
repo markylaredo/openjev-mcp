@@ -39,6 +39,12 @@
           "description": "Retries after the first attempt, 0-10 (default: 2)",
           "isRequired": false,
           "format": "number"
+        },
+        {
+          "name": "OPENJEV_BATCH_CONCURRENCY",
+          "description": "Requests one jev_batch call keeps in flight at once, 1-16 (default: 4)",
+          "isRequired": false,
+          "format": "number"
         }
       ]
     }

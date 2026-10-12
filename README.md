@@ -18,6 +18,9 @@ probabilities that your code can branch on.
 <sub>A real call: one ticket, three questions, one request. Reproduce it with
 `OPENJEV_API_KEY=... npm run demo` ([`demo/run.mjs`](demo/run.mjs)).</sub>
 
+**See an agent use it:** [recorded transcripts](examples/) of DeepSeek Harness triaging an
+electric co-op's help desk, from one member complaint to a morning's queue.
+
 It's powered by **Jev**, TypeSafe's System One model, through the public
 [OpenJEV](https://openjev.sh/docs) API. You send one context and any number of
 independent questions in one call, and the server checks the request locally, retries
@@ -35,6 +38,7 @@ transient failures, and validates every answer before your agent sees it.
 | Lead qualification | `jev_ask` | Company size bucket? Buying intent? Budget mentioned? |
 | LLM-as-judge evals | `jev_score` | Does this answer fully address the question? |
 | Free text to a known value | `jev_choice` | Which of our 200 product SKUs is this customer describing? |
+| Queue triage and backfills | `jev_batch` | For each of these 80 open tickets: which category, and is anyone in danger? |
 
 The rule of thumb: if ordinary code can't express the decision but your code needs to
 act on the result, it's a Jev question.
@@ -148,6 +152,7 @@ retry policy in one place instead of in every prompt.
 | `OPENJEV_TIMEOUT_MS` | `30000` | Per-attempt timeout, 1000–600000. |
 | `OPENJEV_MAX_RETRIES` | `2` | Retries after the first attempt, 0–10. |
 | `OPENJEV_MODEL` | unset | Model alias sent when a call does not name one. Unset uses the service default, `openjev`. |
+| `OPENJEV_BATCH_CONCURRENCY` | `4` | Requests one `jev_batch` call keeps in flight, 1–16. Set it from the rate your key is assigned. |
 
 ## Tools
 
@@ -157,10 +162,11 @@ retry policy in one place instead of in every prompt.
 | `jev_choice` | The answer is one of a set you define — a category, a route, a selection. | one option + `probabilities` + `confidence` |
 | `jev_score` | The answer is a position on an ordered scale — degree, severity, intensity. | `score` + `legend` + `probabilities` + `confidence` |
 | `jev_noul` | The answer is yes or no, and the probability is what matters. | a value in 0–1 |
+| `jev_batch` | The same questions apply to many records — a queue, a backlog, a page of results. | `answers` keyed by your item ids, plus per-item `errors` |
 
-Every tool takes the same `state` (string, object, or array) and `instructions`, and
-accepts an optional `model` — see the descriptions in `tools/list`, which carry the
-design guidance an agent needs to pick between primitives.
+Every tool judges a `state` (string, object, or array; `jev_batch` takes one per item)
+against `instructions`, and accepts an optional `model` — see the descriptions in
+`tools/list`, which carry the design guidance an agent needs to pick between primitives.
 
 ### `jev_ask` — several independent questions, one call
 
@@ -253,6 +259,108 @@ design guidance an agent needs to pick between primitives.
 Read it as probability, not intensity: near 1 yes, near 0 no, near 0.5 uncertain. A
 confident *no* is near 0.
 
+### `jev_batch` — the same questions across many items
+
+`jev_ask` puts many questions to one state; `jev_batch` puts one set of questions to up
+to 100 states. An electric co-op's help desk, triaging this morning's member messages:
+
+```json
+{
+  "items": [
+    { "id": "T-1041", "state": "Power's been out on Ridge Rd since 6am. Three houses." },
+    { "id": "T-1042", "state": "My bill doubled this month and nothing changed. Fix it." },
+    { "id": "T-1043", "state": "There's a line down across our driveway and it's sparking!" }
+  ],
+  "questions": {
+    "category": {
+      "type": "choice",
+      "instructions": "What is the member reporting?",
+      "criteria": {
+        "outage": "Power is out or flickering",
+        "billing_dispute": "Disputes a charge or a bill",
+        "meter": "Meter readings, access, or a damaged meter",
+        "new_connection": "New service, or moving service",
+        "other": "Anything else"
+      }
+    },
+    "hazard": {
+      "type": "noul",
+      "instructions": "Does the message describe a danger to people or property, such as a downed or sparking line?"
+    }
+  }
+}
+```
+
+```json
+{
+  "counts": { "total": 3, "answered": 3, "failed": 0, "not_sent": 0 },
+  "answers": {
+    "T-1041": {
+      "category": {
+        "type": "choice",
+        "choice": "outage",
+        "probabilities": { "outage": 0.95, "billing_dispute": 0.01, "meter": 0.01, "new_connection": 0.01, "other": 0.02 },
+        "confidence": 0.9
+      },
+      "hazard": { "type": "noul", "noul": 0.06 }
+    },
+    "T-1042": {
+      "category": {
+        "type": "choice",
+        "choice": "billing_dispute",
+        "probabilities": { "outage": 0.02, "billing_dispute": 0.93, "meter": 0.03, "new_connection": 0.01, "other": 0.01 },
+        "confidence": 0.87
+      },
+      "hazard": { "type": "noul", "noul": 0.01 }
+    },
+    "T-1043": {
+      "category": {
+        "type": "choice",
+        "choice": "outage",
+        "probabilities": { "outage": 0.81, "billing_dispute": 0.01, "meter": 0.02, "new_connection": 0.01, "other": 0.15 },
+        "confidence": 0.66
+      },
+      "hazard": { "type": "noul", "noul": 0.98 }
+    }
+  },
+  "model": "openjev",
+  "usage": { "input_tokens": 1452, "output_tokens": 213 }
+}
+```
+
+Your code takes it from there: page the line crew for a high `hazard`, and queue the rest
+by `category`, at thresholds you calibrated on your own tickets.
+
+Give each item its record's own `id` so results map back without counting positions;
+without ids, items are labelled `"0"`, `"1"`, and so on. Each item is its own request, so
+it costs what a `jev_ask` with the same questions costs: a batch saves the agent turns,
+not tokens.
+
+An item that fails does not sink the rest. It lands in `errors`, keyed by its id, and the
+batch carries on:
+
+```json
+"errors": {
+  "T-1044": { "code": "unavailable", "message": "OpenJEV is temporarily unavailable.", "retryable": true, "status": 503 }
+}
+```
+
+When going on would only spend calls on a failure that repeats, the batch stops, keeps
+every answer it has, and says why in `stopped`. The items it never sent are listed in
+`not_sent`; send them in a later call, after `retry_after_ms` when it is given:
+
+```json
+"stopped": {
+  "code": "rate_limited",
+  "message": "OpenJEV rate limited this key beyond what one call waits out, so the remaining items were not sent. Send them after retry_after_ms.",
+  "retryable": true,
+  "retry_after_ms": 30000
+},
+"not_sent": ["T-1061", "T-1062", "T-1063"]
+```
+
+A batch that answers nothing is a tool error, like any other failed call.
+
 ## What the server adds to a bare HTTP call
 
 **Requests are checked before they are sent.** Bad input otherwise costs a round trip and
@@ -278,6 +386,15 @@ timeouts, and network errors are retried with exponential backoff and jitter, up
 `OPENJEV_MAX_RETRIES`. A `Retry-After` longer than 15 seconds is *surfaced, not slept
 through*, so a tool call cannot hang for minutes. Retries stop early on `401` and `422`,
 which cannot succeed on a repeat.
+
+**Batches are paced, and stop when going on cannot help.** `jev_batch` keeps
+`OPENJEV_BATCH_CONCURRENCY` requests in flight (4 by default). A `429` on any of them
+pauses new requests for the interval the service asked for and halves the concurrency for
+the rest of the call, as the OpenJEV docs direct. The batch stops early on a rejected key,
+on a rate limit that one call cannot wait out, and after three items fail in a row. It is
+bounded by the same worst case as a single call (~120 s by default): items still in flight
+then are cancelled and reported, so the client timeout that covers one call covers a batch.
+When the client supplies a progress token, the server reports progress after each item.
 
 **Responses are validated against the contract.** A 2xx body that is not the documented
 shape — no `answers`, an unknown answer type, a missing `probabilities`/`confidence` on a
@@ -322,9 +439,11 @@ The operational requirements in summary:
   and placement: [Where the API key goes](docs/api-key.md).
 - **Client call timeout above ~120 s.** That is the server's worst case — 3 attempts × 30 s
   plus two Retry-After waits of up to 15 s. A 60 s client timeout aborts a retry that was still in progress.
+  A `jev_batch` call is bounded by the same figure.
 - **Batch rather than fan out.** Rate limits apply per key and are shared by every process
   using it. One `jev_ask` carrying five questions is one request; five parallel calls are
-  five.
+  five. For many records, one `jev_batch` paces its requests where parallel calls would
+  not.
 - **`state` leaves the machine.** It is processed by TypeSafe's hosted service, so treat it
   as third-party disclosure and submit only what the judgment requires. The server's own
   logs never contain it.
@@ -353,7 +472,9 @@ carries nothing but the protocol.
 src/
   index.ts      stdio entry: env, transport, shutdown, --check / --help
   server.ts     McpServer assembly and server-level instructions
-  tools.ts      the four tools: schemas, descriptions, error mapping
+  tools.ts      the five tools: descriptions, execution, error mapping
+  schemas.ts    argument and result shapes, with their agent-facing descriptions
+  batch.ts      jev_batch: item rules, pacing, early stop, time budget, result shape
   client.ts     HTTP client: retries, error taxonomy, response validation
   questions.ts  local request rules and the option-shorthand conversion
   config.ts     environment parsing
@@ -363,7 +484,8 @@ src/
   types.ts      wire types
 test/
   support/      mock OpenJEV, in-process MCP harness
-  *.test.js     client, request rules, tools, config, stdio
+  *.test.js     client, request rules, tools, batch, config, stdio
+examples/       recorded agent transcripts, the tasks behind them, and the dsh overlay
 docs/
   api-key.md    where the API key goes, per client, and what silently fails
   production.md deployment, credentials, latency budget, runbook, known limits

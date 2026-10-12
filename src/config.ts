@@ -13,6 +13,8 @@ export interface ServerConfig {
   timeoutMs: number | undefined;
   maxRetries: number | undefined;
   model: string | undefined;
+  /** Requests a `jev_batch` call keeps in flight at once. */
+  batchConcurrency: number | undefined;
 }
 
 export class ConfigError extends Error {
@@ -83,5 +85,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     timeoutMs: readInteger(env, 'OPENJEV_TIMEOUT_MS', { min: 1_000, max: 600_000 }),
     maxRetries: readInteger(env, 'OPENJEV_MAX_RETRIES', { min: 0, max: 10 }),
     model: readText(env, 'OPENJEV_MODEL'),
+    batchConcurrency: readInteger(env, 'OPENJEV_BATCH_CONCURRENCY', { min: 1, max: 16 }),
   };
 }

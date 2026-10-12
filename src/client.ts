@@ -59,6 +59,12 @@ export interface OpenJevClientOptions {
 export interface CallOptions {
   /** Aborts the call, including retry waits, with an `aborted` error. */
   signal?: AbortSignal | undefined;
+  /**
+   * Told about each retry just before its wait: the failure being retried and
+   * the wait in milliseconds. A batch uses it to pause its other requests when
+   * the service rate limits one of them.
+   */
+  onRetry?: ((failure: OpenJevError, delayMs: number) => void) | undefined;
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -362,6 +368,15 @@ export class OpenJevClient {
   }
 
   /**
+   * The longest one `systemOne` call can take: every attempt running to its
+   * timeout, with the longest permitted wait between attempts. About 120 s with
+   * the defaults; a client timeout must exceed it.
+   */
+  get callBudgetMs(): number {
+    return (this.maxRetries + 1) * this.timeoutMs + this.maxRetries * this.maxRetryAfterMs;
+  }
+
+  /**
    * Send one request: a shared `state` and one or more independent questions.
    *
    * Retries the documented transient failures (`429`, `5xx`, timeouts, network
@@ -390,6 +405,7 @@ export class OpenJevClient {
         const delay = failure.retryAfterMs ?? this.backoffMs(attempt);
         if (delay > this.maxRetryAfterMs) throw failure;
         throwIfCancelled(options.signal);
+        options.onRetry?.(failure, delay);
         try {
           await this.sleepImpl(delay, options.signal);
         } catch (error) {
