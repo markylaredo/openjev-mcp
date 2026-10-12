@@ -105,7 +105,7 @@ describe('a configured stdio server', () => {
       assert.equal(client.getServerVersion().name, 'openjev');
 
       const { tools } = await client.listTools();
-      assert.equal(tools.length, 4);
+      assert.equal(tools.length, 5);
 
       const result = await client.callTool({
         name: 'jev_noul',

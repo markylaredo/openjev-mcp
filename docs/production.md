@@ -7,7 +7,7 @@ response.
 | | |
 | --- | --- |
 | **Audience** | Operators who deploy, configure, or support `openjev-mcp` |
-| **Applies to** | `openjev-mcp` 0.1.1 |
+| **Applies to** | `openjev-mcp` 0.2.0 |
 | **Not covered** | Server internals and development practice — see [`../README.md`](../README.md) |
 
 All figures below are shipped defaults or measured results. Capabilities the server does
@@ -50,8 +50,8 @@ client-specific element is where the configuration is written.
 | Claude Desktop, Claude Code, Cursor | `mcpServers` block in the client's JSON config |
 
 Tool names are namespaced by the client, not by this server: DeepSeek Harness exposes them
-as `mcp__openjev__jev_ask`, `mcp__openjev__jev_choice`, `mcp__openjev__jev_score`, and
-`mcp__openjev__jev_noul`.
+as `mcp__openjev__jev_ask`, `mcp__openjev__jev_choice`, `mcp__openjev__jev_score`,
+`mcp__openjev__jev_noul`, and `mcp__openjev__jev_batch`.
 
 ### 2.1 DeepSeek Harness (reference client)
 
@@ -157,6 +157,13 @@ Tuning:
 | Fail fast for interactive use | `OPENJEV_MAX_RETRIES=0` — every error is returned immediately |
 | Absorb transient failures in batch work | Keep the default retries |
 
+A `jev_batch` call is bounded by the same figure. It stops when the single-call worst
+case has elapsed — computed from `OPENJEV_TIMEOUT_MS`, `OPENJEV_MAX_RETRIES`, and the 15 s
+`Retry-After` cap, so ~120 s by default — cancels the items still in flight, reports them
+as `timeout`, and lists the rest under `not_sent`. The client timeout that covers one call
+therefore covers a batch, and a long batch returns partial results instead of being
+aborted by the client with nothing to show.
+
 ## 5. Concurrency and rate limiting
 
 Rate limits apply **per API key**, and every client session spawns an independent server
@@ -170,6 +177,15 @@ can observe the others' traffic.
   it returns `rate_limited` with `retry_after_ms` for the caller to schedule.
 - **Unlimited access does not imply unlimited concurrency.** The service documents the
   distinction explicitly.
+- **`jev_batch` paces itself.** It sends one request per item, keeping
+  `OPENJEV_BATCH_CONCURRENCY` in flight (default 4, range 1–16). A `429` on any of them
+  pauses new requests for the interval the service asked for and halves the concurrency
+  for the rest of the call. Set the variable from the rate the dashboard shows for the
+  key. It applies per call: two batches running in parallel keep twice as many requests
+  in flight.
+- **A batch stops rather than hammer a failure.** A rejected key, a rate limit that one
+  call cannot wait out, or three items failing in a row ends the batch: answered items
+  are kept, and the unsent ones are listed under `not_sent` with the reason in `stopped`.
 
 ## 6. Cost model
 
@@ -186,7 +202,10 @@ usage is shown in the OpenJEV dashboard.
 | `openjev-mcp --check` | 316 in / 32 out |
 
 Cost is driven by instruction and criteria text, which is paid per call, and is therefore
-materially lower when questions are batched. Large `state` payloads, lengthy criterion
+materially lower when questions are batched. `jev_batch` is the exception: it sends the
+questions with every item, so a batch of N items costs what N `jev_ask` calls with the same
+questions cost, and its `usage` is the sum over the answered items. It saves agent turns,
+not tokens. Large `state` payloads, lengthy criterion
 descriptions, and long option lists each add to the total. Measure representative requests
 before committing to a budget.
 
@@ -277,6 +296,8 @@ Post-upgrade verification, in order:
 | "Request rejected locally" | Local rules rejected the request before transmission | Correct the reported path. No call was spent |
 | Client lists no `mcp__openjev__*` tools | Server failed to start, or the client was not restarted | Inspect the client's MCP log; `openjev-mcp --check` separates credential faults from client faults |
 | Every call fails at the client's timeout value | Client timeout below the server's retry budget | Raise `toolCallTimeoutMs` above ~120 s |
+| `jev_batch` result carries `stopped` and `not_sent` | The batch ended early: rejected key, a rate limit it could not wait out, three failures in a row, or its time budget | Read `stopped.message`; resend the `not_sent` items, after `retry_after_ms` when present |
+| `jev_batch` keeps stopping on `rate_limited` | `OPENJEV_BATCH_CONCURRENCY` exceeds the key's rate | Lower it, or send smaller batches less often |
 | Failure after editing `~/.dsh/.env` | The harness caches its environment at startup | Restart the harness |
 
 ## 11. Pre-deployment checklist

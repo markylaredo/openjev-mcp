@@ -32,11 +32,11 @@ beforeEach(() => {
 const choiceAnswer = { type: 'choice', choice: 'billing', probabilities: { billing: 0.94, sales: 0.06 }, confidence: 0.85 };
 
 describe('tools/list', () => {
-  it('offers the four Jev tools', async () => {
+  it('offers the five Jev tools', async () => {
     const { tools } = await mcp.client.listTools();
     assert.deepEqual(
       tools.map(tool => tool.name).sort(),
-      ['jev_ask', 'jev_choice', 'jev_noul', 'jev_score'],
+      ['jev_ask', 'jev_batch', 'jev_choice', 'jev_noul', 'jev_score'],
     );
   });
 
@@ -74,6 +74,21 @@ describe('tools/list', () => {
     ]);
     assert.match(byName.jev_choice.inputSchema.properties.state.description, /object of named fields/);
     assert.match(byName.jev_noul.description, /near 0\.5 uncertain/);
+
+    assert.deepEqual(byName.jev_batch.inputSchema.required.sort(), ['items', 'questions']);
+    const items = byName.jev_batch.inputSchema.properties.items;
+    assert.equal(items.maxItems, 100, 'the item cap must be visible to the agent');
+    assert.deepEqual(items.items.required, ['state']);
+    assert.match(items.items.properties.id.description, /ticket number/);
+    assert.doesNotMatch(items.items.properties.state.description, /jev_batch/, 'an item state is already one record');
+  });
+
+  it('steers a list of records to jev_batch rather than into one state', async () => {
+    // A recorded agent packed a whole ticket queue into one jev_ask state and got one blended answer.
+    const { tools } = await mcp.client.listTools();
+    const ask = tools.find(tool => tool.name === 'jev_ask');
+    assert.match(ask.description, /use `jev_batch` to get an answer per record/);
+    assert.match(ask.inputSchema.properties.state.description, /one blended answer rather than one per ticket/);
   });
 
   it('tells the client how confidence may be used', async () => {

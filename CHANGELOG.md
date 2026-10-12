@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0]
+
+### Added
+- `jev_batch`: the same questions put to up to 100 items in one tool call, one request
+  per item. Answers and errors are keyed by the caller's item ids, and one failed item
+  does not sink the rest.
+- Batches are paced: `OPENJEV_BATCH_CONCURRENCY` requests in flight (default 4), and a
+  `429` pauses new requests for the interval the service asked for and halves the
+  concurrency. A batch stops early, keeping its answers and listing the unsent items, on a
+  rejected key, a rate limit it cannot wait out, or three failures in a row. It is
+  bounded by the single-call worst case (~120 s by default), so existing client timeouts
+  cover it, and it reports progress when the client asks for it.
+- `examples/`: real DeepSeek Harness transcripts of an electric co-op's help desk, one
+  member complaint through `jev_ask` and a morning's queue through `jev_batch`, with the
+  tasks and the overlay that recorded them.
+
+### Changed
+- `jev_ask` is titled "Ask Jev (several questions)", so it is not mistaken for `jev_batch`.
+- The `jev_ask` and `state` descriptions say that a state is judged as one whole and
+  point a list of records to `jev_batch`. A recorded agent had packed a whole ticket
+  queue into one state and got one blended answer.
+- Releases publish themselves. `npm run release -- <version>` sets the version in every
+  manifest and turns the Unreleased entries into its notes; merging that to `main`
+  publishes it to npm and the MCP Registry and creates the tag and GitHub release.
+  The version check now covers `package-lock.json` too.
+
 ## [0.1.2]
 
 ### Changed

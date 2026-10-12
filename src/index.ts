@@ -26,7 +26,8 @@ const USAGE = [
   '  openjev-mcp --help     this text',
   '',
   'Environment: OPENJEV_API_KEY (required), OPENJEV_BASE_URL, OPENJEV_TIMEOUT_MS,',
-  '             OPENJEV_MAX_RETRIES, OPENJEV_MODEL — see .env.sample.',
+  '             OPENJEV_MAX_RETRIES, OPENJEV_MODEL, OPENJEV_BATCH_CONCURRENCY',
+  '             — see .env.sample.',
 ].join('\n');
 
 async function main(): Promise<void> {
@@ -53,7 +54,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const server = createServer({ client });
+  const server = createServer({ client, batch: { concurrency: config.batchConcurrency } });
   await server.connect(new StdioServerTransport());
 
   console.error(`openjev-mcp ready: POST ${client.endpoint}`);

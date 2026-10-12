@@ -1,9 +1,11 @@
 /**
  * The tool surface.
  *
- * Four tools: one faithful to the API shape (`jev_ask`) and three ergonomic
- * single-judgment tools built on the same path. All four share one execution
- * routine, so validation, error mapping, and output shaping cannot drift apart.
+ * Five tools: one faithful to the API shape (`jev_ask`), three ergonomic
+ * single-judgment tools built on the same path, and `jev_batch`, which puts one
+ * set of questions to many states. The first four share one execution routine,
+ * so validation, error mapping, and output shaping cannot drift apart; the
+ * batch shares the same validation and error mapping.
  *
  * Descriptions here are the agent's documentation. They say what each primitive
  * means, because choosing the right primitive is the caller's job, and they
@@ -13,104 +15,43 @@
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
+import type { CallToolResult, ServerNotification, ServerRequest } from '@modelcontextprotocol/sdk/types.js';
 
+import {
+  DEFAULT_BATCH_CONCURRENCY,
+  MAX_BATCH_ITEMS,
+  prepareBatch,
+  runBatch,
+  summarizeBatch,
+  type BatchProgress,
+  type BatchSettings,
+} from './batch.js';
 import { describeDetails, OpenJevClient } from './client.js';
 import { isOpenJevError, OpenJevError } from './errors.js';
 import { formatIssues, prepareRequest, type PreparedRequest, type RawQuestion } from './questions.js';
+import {
+  answerSchema,
+  batchItemSchema,
+  choiceCriteriaSchema,
+  hintsSchema,
+  instructionsSchema,
+  itemErrorSchema,
+  modelOutSchema,
+  modelSchema,
+  noulCriteriaSchema,
+  questionIdSchema,
+  questionSchema,
+  scoreCriteriaSchema,
+  stateSchema,
+  usageOutSchema,
+} from './schemas.js';
 import type { Answer, SystemOneRequest, SystemOneResponse } from './types.js';
 
 export interface ToolDependencies {
   client: OpenJevClient;
+  batch?: BatchSettings | undefined;
 }
-
-/* -------------------------------------------------------------------------- */
-/* Schemas                                                                    */
-/* -------------------------------------------------------------------------- */
-
-const stateSchema = z
-  .union([z.string(), z.array(z.unknown()), z.record(z.string(), z.unknown())])
-  .describe(
-    'The content the questions are judged against: text, an object of named fields, or an array of records. Reference a nested field from `instructions` with a dotted path in backticks, e.g. `account.plan`. Fetch external records first — a URL here is not a request to browse — and note that this API accepts no image, audio, or file uploads.',
-  );
-
-const instructionsSchema = z
-  .union([z.string(), z.array(z.unknown()), z.record(z.string(), z.unknown())])
-  .describe(
-    'The judgment to make, written out in full. A clear specific string is usually enough; use an object or array when the judgment, its scope, and its constraints belong together. The question id is not sent to the model, so never rely on it to carry meaning.',
-  );
-
-const questionSchema = z.object({
-  type: z.enum(['choice', 'score', 'noul']).describe('choice: one of a set of named options. score: a position on an ordered scale. noul: a yes/no probability.'),
-  instructions: instructionsSchema,
-  criteria: z
-    .union([z.record(z.string(), z.unknown()), z.array(z.unknown())])
-    .optional()
-    .describe(
-      'The possible answers. For choice, an object of option name to description (or an array of option names as shorthand); up to 255 options. For score, an ordered array of levels, lowest first; up to 10. For noul, optional {"true": ..., "false": ...} descriptions.',
-    ),
-});
-
-const modelSchema = z.string().optional().describe('Model alias. Omit to use the server default (`openjev`).');
-
-const questionIdSchema = z
-  .string()
-  .optional()
-  .describe('Label for this question in the response. Defaults to the primitive name.');
-
-const choiceCriteriaSchema = z
-  .union([z.record(z.string(), z.unknown()), z.array(z.string())])
-  .describe(
-    'The options. An object maps each option name to a description of what it covers and excludes; an array of names is shorthand for options that need no description. Include an option named "other" or "none" when the list may not cover every input.',
-  );
-
-const scoreCriteriaSchema = z
-  .array(z.unknown())
-  .describe(
-    'The ordered levels, lowest first. Each level is a self-contained description (a string, or an object/array holding meaning and examples). A three-level scale returns a score from 0 to 2; fractional scores fall between levels, so each level must stand on its own rather than say "same as the level below".',
-  );
-
-const noulCriteriaSchema = z
-  .strictObject({
-    true: z.unknown().optional().describe('What counts as yes.'),
-    false: z.unknown().optional().describe('What counts as no.'),
-  })
-  .describe('Optional descriptions of the two outcomes. Omit when `instructions` already defines both.');
-
-const criterionDescriptionSchema = z.unknown();
-
-const answerSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('choice'),
-    choice: z.string(),
-    probabilities: z.record(z.string(), z.number()),
-    confidence: z.number(),
-  }),
-  z.object({
-    type: z.literal('score'),
-    score: z.number(),
-    legend: z.record(z.string(), criterionDescriptionSchema),
-    probabilities: z.record(z.string(), z.number()),
-    confidence: z.number(),
-  }),
-  z.object({
-    type: z.literal('noul'),
-    noul: z.number(),
-  }),
-]);
-
-const usageSchema = z.object({
-  input_tokens: z.number().optional(),
-  output_tokens: z.number().optional(),
-});
-
-const hintsSchema = z
-  .array(z.string())
-  .optional()
-  .describe('Non-blocking advice about this request, when there is any.');
-
-const modelOutSchema = z.string().optional();
-const usageOutSchema = usageSchema.optional();
 
 /* -------------------------------------------------------------------------- */
 /* Execution                                                                  */
@@ -140,7 +81,7 @@ function nextStep(error: OpenJevError): string {
   }
 }
 
-function errorResult(error: unknown): CallToolResult {
+function errorResult(error: unknown, lead = 'OpenJEV call failed'): CallToolResult {
   if (isOpenJevError(error)) {
     const payload: Record<string, unknown> = { code: error.code, retryable: error.retryable };
     if (error.status !== undefined) payload['status'] = error.status;
@@ -152,7 +93,7 @@ function errorResult(error: unknown): CallToolResult {
       content: [
         {
           type: 'text',
-          text: `OpenJEV call failed: ${error.describe()}\n${nextStep(error)}\n${JSON.stringify(payload)}`,
+          text: `${lead}: ${error.describe()}\n${nextStep(error)}\n${JSON.stringify(payload)}`,
         },
       ],
     };
@@ -240,30 +181,48 @@ async function askOne(
   );
 }
 
+type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
+
+/** Report batch progress, when the caller asked for it with a progress token. */
+function progressReporter(extra: ToolExtra): ((progress: BatchProgress) => void) | undefined {
+  const progressToken = extra._meta?.progressToken;
+  if (progressToken === undefined) return undefined;
+  return ({ done, total, answered, failed }) => {
+    // Advisory: a notification that cannot be delivered must not fail the batch.
+    extra
+      .sendNotification({
+        method: 'notifications/progress',
+        params: { progressToken, progress: done, total, message: `${answered} answered, ${failed} failed` },
+      })
+      .catch(() => undefined);
+  };
+}
+
 /* -------------------------------------------------------------------------- */
 /* Registration                                                               */
 /* -------------------------------------------------------------------------- */
 
 /**
  * Every tool asks an external service for a judgment and changes nothing, so the
- * hints are the same for all four. Each one is explicit: directories such as
+ * hints are the same for all five. Each one is explicit: directories such as
  * OpenAI's reject a tool that leaves any hint unset.
  */
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true } as const;
 
 export function registerTools(server: McpServer, deps: ToolDependencies): void {
-  const { client } = deps;
+  const { client, batch = {} } = deps;
 
   server.registerTool(
     'jev_ask',
     {
-      title: 'Ask Jev (batch)',
+      title: 'Ask Jev (several questions)',
       description: [
         'Send one shared context and one or more independent questions to Jev (TypeSafe System One) and get typed judgments back — not prose.',
         '',
         'How to design the call:',
         '- `state` carries the text and facts; `instructions` carries the judgment, in the question\'s own words.',
         '- Every question is answered independently against the same state. Order is not a sequence, and no question can use another\'s answer. Ask independent questions together in one call, including conditional ones whose answers you may ignore; make a second call only when an answer decides what to fetch or ask next.',
+        '- One call judges one state as a whole. Packing several records into it, such as a list of tickets, yields one blended answer; use `jev_batch` to get an answer per record.',
         '- Prefer `choice` for a category, `score` for an ordered scale, and `noul` for a yes/no judgment. Use separate noul questions when several labels can apply at once, since a choice returns exactly one option.',
         '',
         'Reading the result: answers come back under `answers` keyed by question id. Choice and score carry `probabilities` and `confidence`; `confidence` says how concentrated the distribution is, not how likely the answer is to be correct, so calibrate any threshold on your own labeled examples. Noul carries a single probability — near 1 yes, near 0 no, near 0.5 uncertain — and no confidence field.',
@@ -406,5 +365,83 @@ export function registerTools(server: McpServer, deps: ToolDependencies): void {
         args.model,
         extra.signal,
       ),
+  );
+
+  server.registerTool(
+    'jev_batch',
+    {
+      title: 'Jev batch (many items)',
+      description: [
+        'Put the same independent questions to each of many items — a queue of tickets, a page of comments, rows of records — and get typed answers per item.',
+        '',
+        'How it runs: each item is its own request to Jev, carrying its state and every question, so an item costs what a `jev_ask` call with those questions costs. Requests go out a few at a time and are paced to the key\'s rate limit. Use `jev_ask` for a single item.',
+        '',
+        'How to design the call:',
+        `- \`items\` holds 1 to ${MAX_BATCH_ITEMS} records, each with its own \`state\`. Give every item an \`id\` — the record's own id, such as a ticket number — so its results map back without counting positions; without ids, items are labelled by position from "0".`,
+        '- `questions` follows the same rules as in `jev_ask`, and every item is judged against all of them, independently.',
+        '',
+        'Reading the result: `counts` gives the totals. `answers[item id][question id]` holds an answered item\'s answers, shaped as in `jev_ask`; `confidence` says how concentrated a distribution is, not how likely the answer is to be correct. `errors[item id]` holds an item that failed, with its `code` and whether it is `retryable`. When the call ends early — a rejected key, a rate limit it cannot wait out, several failures in a row, or its time budget — `stopped` says why and `not_sent` lists the items never sent. Send those, and any retryable errors, in a later call, after `retry_after_ms` when it is given.',
+      ].join('\n'),
+      inputSchema: {
+        items: z
+          .array(batchItemSchema)
+          .min(1)
+          .max(MAX_BATCH_ITEMS)
+          .describe(`The records to judge, 1 to ${MAX_BATCH_ITEMS} per call. Each is sent as its own request, with every question.`),
+        questions: z
+          .record(z.string(), questionSchema)
+          .describe('Question id to question definition, as in `jev_ask`. Non-empty. Every item is asked every question.'),
+        model: modelSchema,
+      },
+      outputSchema: {
+        counts: z
+          .object({ total: z.number(), answered: z.number(), failed: z.number(), not_sent: z.number() })
+          .describe('How many items were answered, failed, or never sent.'),
+        stopped: z
+          .object({
+            code: z.string(),
+            message: z.string(),
+            retryable: z.boolean(),
+            retry_after_ms: z.number().optional(),
+          })
+          .optional()
+          .describe('Present when the call ended before sending every item: why, and whether the unsent items can be sent again as they are.'),
+        answers: z
+          .record(z.string(), z.record(z.string(), answerSchema))
+          .describe('Item id to that item\'s answers, keyed by question id as in `jev_ask`.'),
+        errors: z
+          .record(z.string(), itemErrorSchema)
+          .optional()
+          .describe('Item id to the failure of an item that was sent but not answered.'),
+        not_sent: z.array(z.string()).optional().describe('Ids of the items never sent because the call stopped early.'),
+        model: modelOutSchema,
+        usage: usageOutSchema.describe('Tokens summed over the answered items.'),
+        hints: hintsSchema,
+      },
+      annotations: READ_ONLY,
+    },
+    async (args, extra) => {
+      const prepared = prepareBatch(args.items, args.questions as Record<string, RawQuestion>);
+      if (prepared.review.issues.length > 0) {
+        return { isError: true, content: [{ type: 'text', text: formatIssues(prepared.review.issues) }] };
+      }
+      try {
+        const result = await runBatch(client, prepared, {
+          concurrency: batch.concurrency ?? DEFAULT_BATCH_CONCURRENCY,
+          timeBudgetMs: batch.timeBudgetMs ?? client.callBudgetMs,
+          model: args.model,
+          signal: extra.signal,
+          onProgress: progressReporter(extra),
+          sleepImpl: batch.sleepImpl,
+        });
+        const summary = summarizeBatch(result, prepared.review.hints);
+        if (!summary.ok) return errorResult(summary.error, summary.lead);
+        // Compact: a batch result runs long, and indentation would cost the
+        // caller tokens on every item.
+        return { content: [{ type: 'text', text: JSON.stringify(summary.structured) }], structuredContent: summary.structured };
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
   );
 }

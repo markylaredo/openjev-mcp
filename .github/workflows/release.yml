@@ -1,55 +1,108 @@
 name: Release
 
-# Publish by creating a GitHub release whose tag is v<package.json version>,
-# e.g. v0.2.0. Authenticates to npm through trusted publishing (OIDC): on
-# npmjs.com the trusted publisher must name this exact file, `release.yml`.
-# No token or secret is involved.
+# Publishes the version main declares, once. When package.json on main carries a
+# version that is not out yet, this publishes it to npm (trusted publishing, OIDC)
+# and the MCP Registry, then creates the v<version> tag and GitHub release from that
+# version's CHANGELOG section. Prepare one with `npm run release -- <version>` and
+# merge it; there is nothing else to click.
+#
+# Each step checks first and skips what is already done, so a run that failed part
+# way can be re-run, or started by hand from the Actions tab, to finish the job.
+#
+# On npmjs.com the trusted publisher must name this exact file, `release.yml`. No
+# token or secret is involved.
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One run at a time, so two quick merges cannot race to publish the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write # the v<version> tag and GitHub release
   id-token: write # npm provenance and MCP Registry GitHub OIDC login
 
 jobs:
   publish:
+    # A manual run can be started from any branch; only main is ever published.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: What is left to publish
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          package=$(node -p "require('./package.json').name")
+          server=$(node -p "require('./server.json').name")
+          state() { if "$@" >/dev/null 2>&1; then echo done; else echo todo; fi; }
+          on_npm() { [ "$(npm view "$package@$version" version 2>/dev/null)" = "$version" ]; }
+          npm=$(state on_npm)
+          registry=$(state curl -sf "https://registry.modelcontextprotocol.io/v0/servers/${server/\//%2F}/versions/$version")
+          release=$(state gh release view "v$version")
+          echo "v$version: npm $npm, MCP Registry $registry, GitHub release $release"
+          # npm moves `latest` to whatever is published, so never publish backwards.
+          latest=$(npm view "$package" version 2>/dev/null || true)
+          if [ "$npm" = todo ] && [ -n "$latest" ] && [ "$(printf '%s\n' "$latest" "$version" | sort -V | tail -n1)" != "$version" ]; then
+            echo "::error::package.json says $version, which is older than $latest on npm"
+            exit 1
+          fi
+          { echo "VERSION=$version"; echo "PACKAGE=$package"; } >> "$GITHUB_ENV"
+          {
+            echo "npm=$npm"
+            echo "registry=$registry"
+            echo "release=$release"
+            [ "$npm$registry$release" = donedonedone ] && echo "work=false" || echo "work=true"
+          } >> "$GITHUB_OUTPUT"
+      # Before anything is published, so a version without notes stops here.
+      - name: Release notes from CHANGELOG.md
+        if: steps.plan.outputs.release == 'todo'
+        run: node scripts/release.mjs notes "$VERSION" > "$RUNNER_TEMP/notes.md"
+      - if: steps.plan.outputs.work == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
       - name: npm 11.5+ for trusted publishing
+        if: steps.plan.outputs.npm == 'todo'
         run: npm install -g npm@latest
-      - run: npm ci
-      - name: Tag matches package.json and server.json
-        run: node scripts/check-versions.mjs "${GITHUB_REF_NAME#v}"
+      - if: steps.plan.outputs.work == 'true'
+        run: npm ci
+      - name: Versions agree
+        if: steps.plan.outputs.work == 'true'
+        run: node scripts/check-versions.mjs "$VERSION"
       # Build before publishing: npm validates `bin` (dist/index.js) before
-      # prepublishOnly runs, and drops a bin entry whose file does not exist.
-      - run: npm run build
-      # Skipped when this version is already on npm, so a release whose registry
-      # step failed can be run again without npm rejecting a duplicate publish.
+      # prepublishOnly runs the tests, and drops a bin entry whose file does not exist.
+      - if: steps.plan.outputs.npm == 'todo'
+        run: npm run build
       - name: npm publish
-        run: |
-          if npm view "openjev-mcp@${GITHUB_REF_NAME#v}" version >/dev/null 2>&1; then
-            echo "openjev-mcp@${GITHUB_REF_NAME#v} is already on npm; skipping."
-          else
-            npm publish --provenance
-          fi
+        if: steps.plan.outputs.npm == 'todo'
+        run: npm publish --provenance
       # The MCP Registry verifies the npm version exists, and a fresh publish can
       # take a minute or more to become visible.
       - name: Wait for the version on npm
+        if: steps.plan.outputs.registry == 'todo'
         run: |
           for i in $(seq 1 30); do
-            npm view "openjev-mcp@${GITHUB_REF_NAME#v}" version >/dev/null 2>&1 && exit 0
+            [ "$(npm view "$PACKAGE@$VERSION" version 2>/dev/null)" = "$VERSION" ] && exit 0
             echo "not visible yet ($i/30)"; sleep 10
           done
-          echo "openjev-mcp@${GITHUB_REF_NAME#v} did not appear on npm within 5 minutes"; exit 1
+          echo "$PACKAGE@$VERSION did not appear on npm within 5 minutes"; exit 1
       - name: Publish to the MCP Registry
+        if: steps.plan.outputs.registry == 'todo'
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
+      # Last, so the release on GitHub means the version is out everywhere.
+      - name: Tag and GitHub release
+        if: steps.plan.outputs.release == 'todo'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" --notes-file "$RUNNER_TEMP/notes.md"

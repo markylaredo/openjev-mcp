@@ -14,8 +14,9 @@ import { createServer } from '../../dist/server.js';
  * @param {object} options
  * @param {string} options.baseUrl base URL of the mock API
  * @param {Record<string, unknown>} [options.clientOptions] extra client options
+ * @param {Record<string, unknown>} [options.batch] jev_batch settings
  */
-export async function connectInProcess({ baseUrl, clientOptions = {} }) {
+export async function connectInProcess({ baseUrl, clientOptions = {}, batch }) {
   const openjev = new OpenJevClient({
     apiKey: 'test-key',
     baseUrl,
@@ -23,7 +24,7 @@ export async function connectInProcess({ baseUrl, clientOptions = {} }) {
     retryBaseDelayMs: 1,
     ...clientOptions,
   });
-  const server = createServer({ client: openjev });
+  const server = createServer({ client: openjev, batch });
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

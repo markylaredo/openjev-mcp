@@ -38,6 +38,7 @@ describe('loadConfig', () => {
       timeoutMs: undefined,
       maxRetries: undefined,
       model: undefined,
+      batchConcurrency: undefined,
     });
   });
 
@@ -48,6 +49,7 @@ describe('loadConfig', () => {
       OPENJEV_TIMEOUT_MS: '5000',
       OPENJEV_MAX_RETRIES: '0',
       OPENJEV_MODEL: 'openjev',
+      OPENJEV_BATCH_CONCURRENCY: ' 8 ',
     });
     assert.deepEqual(config, {
       apiKey: 'secret',
@@ -55,6 +57,7 @@ describe('loadConfig', () => {
       timeoutMs: 5_000,
       maxRetries: 0,
       model: 'openjev',
+      batchConcurrency: 8,
     });
   });
 
@@ -68,5 +71,7 @@ describe('loadConfig', () => {
     expectConfigError({ OPENJEV_API_KEY: 'k', OPENJEV_TIMEOUT_MS: '10' }, /between 1000 and 600000/);
     expectConfigError({ OPENJEV_API_KEY: 'k', OPENJEV_MAX_RETRIES: '-1' }, /between 0 and 10/);
     expectConfigError({ OPENJEV_API_KEY: 'k', OPENJEV_MAX_RETRIES: '99' }, /between 0 and 10/);
+    expectConfigError({ OPENJEV_API_KEY: 'k', OPENJEV_BATCH_CONCURRENCY: '0' }, /OPENJEV_BATCH_CONCURRENCY must be between 1 and 16/);
+    expectConfigError({ OPENJEV_API_KEY: 'k', OPENJEV_BATCH_CONCURRENCY: 'many' }, /must be a whole number/);
   });
 });

@@ -96,20 +96,21 @@ function reviewInstructions(path: string, value: unknown, issues: QuestionIssue[
   });
 }
 
-function reviewState(state: unknown, issues: QuestionIssue[]): void {
+/** Check one `state`; `path` names it in any issue, e.g. `items[3].state` in a batch. */
+export function reviewState(state: unknown, issues: QuestionIssue[], path = 'state'): void {
   if (typeof state === 'string') {
-    if (state.trim().length === 0) issues.push({ path: 'state', message: 'must not be empty' });
+    if (state.trim().length === 0) issues.push({ path, message: 'must not be empty' });
     return;
   }
   if (Array.isArray(state)) {
-    if (state.length === 0) issues.push({ path: 'state', message: 'must not be an empty array' });
+    if (state.length === 0) issues.push({ path, message: 'must not be an empty array' });
     return;
   }
   if (isPlainObject(state)) {
-    if (Object.keys(state).length === 0) issues.push({ path: 'state', message: 'must not be an empty object' });
+    if (Object.keys(state).length === 0) issues.push({ path, message: 'must not be an empty object' });
     return;
   }
-  issues.push({ path: 'state', message: `must be a string, object, or array (got ${typeName(state)})` });
+  issues.push({ path, message: `must be a string, object, or array (got ${typeName(state)})` });
 }
 
 function reviewChoice(path: string, criteria: Record<string, CriterionDescription>, review: Review): void {
@@ -264,13 +265,21 @@ function toQuestion(path: string, raw: RawQuestion, issues: QuestionIssue[]): Qu
  * Validate every part of a request before it is sent.
  *
  * Always returns a request: callers inspect `review.issues` and skip the HTTP
- * call when it is non-empty. Questions that fail conversion are left out of
- * `questions` so the remaining issues stay readable.
+ * call when it is non-empty.
  */
 export function prepareRequest(state: unknown, rawQuestions: Record<string, RawQuestion>): PreparedRequest {
   const review: Review = { issues: [], hints: [] };
   reviewState(state, review.issues);
+  const questions = prepareQuestions(rawQuestions, review);
+  return { state: state as State, questions, review };
+}
 
+/**
+ * Convert and check a question map, adding its problems and advice to `review`.
+ * Questions that fail conversion are left out of the result so the remaining
+ * issues stay readable.
+ */
+export function prepareQuestions(rawQuestions: Record<string, RawQuestion>, review: Review): Record<string, Question> {
   const ids = Object.keys(rawQuestions);
   if (ids.length === 0) {
     review.issues.push({ path: 'questions', message: 'needs at least one question' });
@@ -291,7 +300,7 @@ export function prepareRequest(state: unknown, rawQuestions: Record<string, RawQ
 
   // Defined as own properties, so an id such as `__proto__` is carried through
   // like any other label instead of mutating the object's prototype.
-  return { state: state as State, questions: Object.fromEntries(converted), review };
+  return Object.fromEntries(converted);
 }
 
 /** Render issues as one agent-readable block, one problem per line. */

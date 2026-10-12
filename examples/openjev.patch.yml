@@ -1,0 +1,22 @@
+# Attach openjev-mcp to a DeepSeek Harness profile for one run, without editing it:
+#
+#   dsh --profile headless --patch examples/openjev.patch.yml "$(cat examples/coop-queue/task.md)"
+#
+# The transcripts in this folder were recorded with this repository's own build. To do
+# the same, run `npm run build` and replace the command and args below with:
+#
+#   command: node
+#   args: ['/absolute/path/to/openjev-mcp/dist/index.js']
+- insert:
+    - id: mcp-openjev
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: openjev
+        transport: stdio
+        command: npx
+        args: ['-y', 'openjev-mcp']
+        env:
+          # Named explicitly: the harness hands MCP children a scrubbed environment.
+          OPENJEV_API_KEY: !!js process.env.OPENJEV_API_KEY
+        # Above the server's own worst case of ~120 s.
+        toolCallTimeoutMs: 150000
