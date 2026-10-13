@@ -21,6 +21,17 @@ probabilities that your code can branch on.
 **See an agent use it:** [recorded transcripts](examples/) of DeepSeek Harness triaging an
 electric co-op's help desk, from one member complaint to a morning's queue.
 
+![DeepSeek Harness replaying both examples: one member complaint triaged with jev_ask, then eight queued messages triaged with jev_batch](./demo/examples.gif)
+
+<sub>Both transcripts replayed by [`demo/examples.mjs`](demo/examples.mjs): the recorded
+words and numbers, with the agent's thinking time cut and its answers excerpted. Play it
+in a terminal with `node demo/examples.mjs`; no key needed.</sub>
+
+![Queue-only replay: eight member messages triaged with jev_batch, with the two hazards dispatched first](./demo/coop-queue.gif)
+
+<sub>Queue-only replay: [read the transcript](examples/coop-queue/transcript.md) or run
+`node demo/examples.mjs coop-queue`.</sub>
+
 It's powered by **Jev**, TypeSafe's System One model, through the public
 [OpenJEV](https://openjev.sh/docs) API. You send one context and any number of
 independent questions in one call, and the server checks the request locally, retries

@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Root README previews of `demo/examples.gif` and `demo/coop-queue.gif`, alongside the
+  existing `demo/demo.gif`, with links to the recorded examples.
+
+### Changed
+- Recorded example GIFs use plain image embeds with explicit relative paths for local
+  Markdown previews.
+
 ## [0.2.0]
 
 ### Added
