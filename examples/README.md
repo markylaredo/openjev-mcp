@@ -4,6 +4,12 @@ Real runs, start to finish. An agent gets a help-desk task in plain words, decid
 use the openjev tools, and acts on the typed answers. Each transcript is copied from the
 agent's session log: the task, every tool call and result, and the final answer.
 
+![Both runs replayed: one member complaint gets four typed answers from a jev_ask call and goes to the on-call line crew, then eight queued messages are triaged in one jev_batch call and the two hazards are dispatched first](../demo/examples.gif)
+
+<sub>Both transcripts replayed by [`demo/examples.mjs`](../demo/examples.mjs): the recorded
+words and numbers, with the agent's thinking time cut and its answers excerpted. Watch it
+in a terminal with `node demo/examples.mjs`; no key needed.</sub>
+
 | Example | Tool | What it shows |
 | --- | --- | --- |
 | [One complaint, four judgments](coop-complaint/transcript.md) | `jev_ask` | Category, urgency, safety hazard, and how upset the member is, from one call, routed by the co-op's own thresholds |
