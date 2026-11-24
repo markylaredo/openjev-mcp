@@ -9,6 +9,7 @@ probabilities that your code can branch on.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![M8ven Score](https://m8ven.ai/badge/mcp/markylaredo/openjev-mcp)](https://m8ven.ai/mcp/markylaredo/openjev-mcp)
 [![M8ven Verified](https://m8ven.ai/badge/mcp/markylaredo-openjev-mcp-1555cu?variant=verified)](https://m8ven.ai/mcp/markylaredo-openjev-mcp-1555cu?s=readme)
+[![markylaredo/openjev-mcp MCP server](https://glama.ai/mcp/servers/markylaredo/openjev-mcp/badges/score.svg)](https://glama.ai/mcp/servers/markylaredo/openjev-mcp)
 
 [![Install in Cursor](https://img.shields.io/badge/Cursor-Install_MCP-000000?logo=cursor)](https://cursor.com/en/install-mcp?name=openjev&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9wZW5qZXYtbWNwIl0sImVudiI6eyJPUEVOSkVWX0FQSV9LRVkiOiIifX0=)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP-0098FF?logo=visualstudiocode)](https://insiders.vscode.dev/redirect/mcp/install?name=openjev&inputs=%5B%7B%22type%22%3A%22promptString%22%2C%22id%22%3A%22openjev_api_key%22%2C%22description%22%3A%22OpenJEV%20API%20key%20(https%3A%2F%2Fopenjev.sh%2Fdashboard)%22%2C%22password%22%3Atrue%7D%5D&config=%7B%22name%22%3A%22openjev%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22openjev-mcp%22%5D%2C%22env%22%3A%7B%22OPENJEV_API_KEY%22%3A%22%24%7Binput%3Aopenjev_api_key%7D%22%7D%7D)

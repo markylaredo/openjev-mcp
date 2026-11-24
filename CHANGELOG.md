@@ -11,6 +11,9 @@ All notable changes to this project are documented here. The format follows
   existing `demo/demo.gif`, with links to the recorded examples.
 
 ### Changed
+- README: Glama listing badge added beside the M8ven badges, linking to
+  https://glama.ai/mcp/servers/markylaredo/openjev-mcp (requested by the
+  awesome-mcp-servers maintainers for listing priority).
 - Recorded example GIFs use plain image embeds with explicit relative paths for local
   Markdown previews.
 
